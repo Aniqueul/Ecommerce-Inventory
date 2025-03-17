@@ -8,10 +8,21 @@
 </head>
 <body>
     <div class="container">
-        <h1>Products</h1>
+        <h1>Product Inventory</h1>
         <button id="logoutButton">Logout</button>
-        <div id="productList"></div>
+
+        <!-- Search and Filter -->
+        <div class="search-container">
+            <input type="text" id="searchCategory" placeholder="Search by Category">
+            <input type="number" id="minPrice" placeholder="Min Price">
+            <input type="number" id="maxPrice" placeholder="Max Price">
+            <button onclick="fetchProducts()">Search</button>
+        </div>
+
+        <!-- Product List -->
+        <div id="productList" class="product-grid"></div>
     </div>
+
     <script src="products.js"></script>
 </body>
 </html>

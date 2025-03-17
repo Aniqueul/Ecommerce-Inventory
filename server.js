@@ -82,17 +82,30 @@ const authenticate = (req, res, next) => {
     }
 };
 
-// Add Product (Admin/Seller)
-app.post('/products', authenticate, (req, res) => {
-    const { name, price, category, stock } = req.body;
-    const sellerId = req.user.role === 'seller' ? req.user.id : null;
+app.get('/products', (req, res) => {
+    const { category, minPrice, maxPrice } = req.query;
+    let sql = 'SELECT * FROM products WHERE 1=1';
+    const params = [];
 
-    const sql = 'INSERT INTO products (name, price, category, stock, seller_id) VALUES (?, ?, ?, ?, ?)';
-    db.query(sql, [name, price, category, stock, sellerId], (err, result) => {
-        if (err) return res.status(400).json({ error: 'Failed to add product' });
-        res.status(201).json({ message: 'Product added successfully' });
+    if (category) {
+        sql += ' AND category = ?';
+        params.push(category);
+    }
+    if (minPrice) {
+        sql += ' AND price >= ?';
+        params.push(minPrice);
+    }
+    if (maxPrice) {
+        sql += ' AND price <= ?';
+        params.push(maxPrice);
+    }
+
+    db.query(sql, params, (err, results) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        res.json(results);
     });
 });
+
 
 // Update Product (Admin/Seller)
 app.put('/products/:id', authenticate, (req, res) => {
@@ -148,4 +161,25 @@ app.get('/products', (req, res) => {
 const PORT = 5000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+});
+app.put('/products/:id', authenticate, (req, res) => {
+    const { name, price, category, stock } = req.body;
+    const productId = req.params.id;
+    const sellerId = req.user.role === 'seller' ? req.user.id : null;
+
+    const sql = 'UPDATE products SET name = ?, price = ?, category = ?, stock = ? WHERE id = ? AND (seller_id = ? OR ? IS NULL)';
+    db.query(sql, [name, price, category, stock, productId, sellerId, sellerId], (err, result) => {
+        if (err) return res.status(400).json({ error: 'Failed to update product' });
+        res.json({ message: 'Product updated successfully' });
+    });
+});
+app.delete('/products/:id', authenticate, (req, res) => {
+    const productId = req.params.id;
+    const sellerId = req.user.role === 'seller' ? req.user.id : null;
+
+    const sql = 'DELETE FROM products WHERE id = ? AND (seller_id = ? OR ? IS NULL)';
+    db.query(sql, [productId, sellerId, sellerId], (err, result) => {
+        if (err) return res.status(400).json({ error: 'Failed to delete product' });
+        res.json({ message: 'Product deleted successfully' });
+    });
 });
