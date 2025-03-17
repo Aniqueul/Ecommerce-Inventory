@@ -49,7 +49,7 @@ document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
             localStorage.setItem('role', data.role);
 
             // Redirect to the products page
-            window.location.href = '/products.html';
+            window.location.href = 'http://localhost:5000/products.html';
         } else {
             // Display error message
             document.getElementById('errorMessage').textContent = data.error || 'Login failed';
