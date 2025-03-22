@@ -1,185 +1,181 @@
-const express = require('express');
-const mysql = require('mysql2');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const bodyParser = require('body-parser');
-const cors = require('cors');
+const express = require("express");
+const mysql = require("mysql2");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const bodyParser = require("body-parser");
+const cors = require("cors");
 
 const app = express();
 
-// Middleware
-app.use(bodyParser.json()); // Parse JSON request bodies
-app.use(cors()); // Enable CORS
-app.use(express.static('public')); // Serve static files from the "public" folder
+app.use(bodyParser.json());
+app.use(cors());
+app.use(express.static("public"));
 
-// Database connection
+// Database Connection
 const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: 'aniqueul85hassan', // Replace with your MySQL password
-    database: 'ecommerce'
+    host: "localhost",
+    user: "root",
+    password: "aniqueul85hassan",
+    database: "ecommerce"
 });
 
 db.connect((err) => {
-    if (err) throw err;
-    console.log('MySQL Connected...');
-});
-
-// JWT Secret Key
-const JWT_SECRET = 'your_jwt_secret_key';
-
-// Register User
-app.post('/register', async (req, res) => {
-    const { username, password, role } = req.body;
-
-    // Validate required fields
-    if (!username || !password || !role) {
-        return res.status(400).json({ error: 'Username, password, and role are required' });
+    if (err) {
+        console.error("Database connection failed:", err);
+        process.exit(1);
     }
-
-    try {
-        const hashedPassword = await bcrypt.hash(password, 8); // Hash the password
-
-        const sql = 'INSERT INTO users (username, password, role) VALUES (?, ?, ?)';
-        db.query(sql, [username, hashedPassword, role], (err, result) => {
-            if (err) return res.status(400).json({ error: 'Registration failed' });
-            res.status(201).json({ message: 'User registered successfully' });
-        });
-    } catch (error) {
-        console.error('Error hashing password:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+    console.log("✅ MySQL Connected...");
 });
 
-// Login User
-app.post('/login', (req, res) => {
-    const { username, password } = req.body;
+// 🔐 JWT Secret Keys
+const JWT_SECRET = "my_super_secret_key"; // Short-lived token (Access Token)
+const REFRESH_SECRET = "my_refresh_secret_key"; // Long-lived token (Refresh Token)
 
-    const sql = 'SELECT * FROM users WHERE username = ?';
-    db.query(sql, [username], async (err, results) => {
-        if (err || results.length === 0) return res.status(400).json({ error: 'Invalid credentials' });
+let refreshTokens = []; // Store refresh tokens in memory (Use DB in production)
 
-        const user = results[0];
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) return res.status(400).json({ error: 'Invalid credentials' });
-
-        const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '1h' });
-        res.json({ token, role: user.role });
-    });
-});
-
-// Middleware to authenticate users
+// 🟢 Middleware: Authenticate Users with Access Token
 const authenticate = (req, res, next) => {
-    const token = req.header('Authorization');
-    if (!token) return res.status(401).json({ error: 'Access denied' });
+    const authHeader = req.header("Authorization");
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Access denied. No token provided" });
+    }
+
+    const token = authHeader.split(" ")[1]; // Extract token after "Bearer "
+    console.log("🔹 Token received in backend:", token);
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
         req.user = decoded;
         next();
     } catch (err) {
-        res.status(400).json({ error: 'Invalid token' });
+        console.error("❌ Invalid token:", err.message);
+        return res.status(401).json({ error: "Invalid token" });
     }
 };
 
-app.get('/products', (req, res) => {
-    const { category, minPrice, maxPrice } = req.query;
-    let sql = 'SELECT * FROM products WHERE 1=1';
-    const params = [];
+// 🟢 Middleware: Check Admin Role
+const isAdmin = (req, res, next) => {
+    if (req.user.role !== "admin") {
+        return res.status(403).json({ error: "Access denied. Admins only" });
+    }
+    next();
+};
 
-    if (category) {
-        sql += ' AND category = ?';
-        params.push(category);
-    }
-    if (minPrice) {
-        sql += ' AND price >= ?';
-        params.push(minPrice);
-    }
-    if (maxPrice) {
-        sql += ' AND price <= ?';
-        params.push(maxPrice);
+// 🟢 Register User
+app.post("/register", async (req, res) => {
+    const { username, password, role } = req.body;
+
+    if (!username || !password || !role) {
+        return res.status(400).json({ error: "All fields are required" });
     }
 
-    db.query(sql, params, (err, results) => {
-        if (err) return res.status(500).json({ error: 'Database error' });
+    try {
+        const hashedPassword = await bcrypt.hash(password, 8);
+        const sql = "INSERT INTO users (username, password, role) VALUES (?, ?, ?)";
+
+        db.query(sql, [username, hashedPassword, role], (err, result) => {
+            if (err) return res.status(400).json({ error: "User registration failed" });
+            res.status(201).json({ message: "User registered successfully" });
+        });
+    } catch (error) {
+        console.error("Error hashing password:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+// 🟢 Login User (Returns Access & Refresh Tokens)
+app.post("/login", (req, res) => {
+    const { username, password } = req.body;
+    const sql = "SELECT * FROM users WHERE username = ?";
+
+    db.query(sql, [username], async (err, results) => {
+        if (err || results.length === 0) return res.status(400).json({ error: "Invalid credentials" });
+
+        const user = results[0];
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) return res.status(400).json({ error: "Invalid credentials" });
+
+        // Generate Tokens
+        const accessToken = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: "1h" });
+        const refreshToken = jwt.sign({ id: user.id, role: user.role }, REFRESH_SECRET, { expiresIn: "7d" });
+
+        refreshTokens.push(refreshToken); // Store refresh token
+
+        res.json({ accessToken, refreshToken, role: user.role });
+    });
+});
+
+// 🟢 Refresh Token Endpoint (Generates a New Access Token)
+app.post("/refresh", (req, res) => {
+    const { token } = req.body;
+    
+    if (!token) return res.status(401).json({ error: "Refresh token required" });
+    if (!refreshTokens.includes(token)) return res.status(403).json({ error: "Invalid refresh token" });
+
+    try {
+        const decoded = jwt.verify(token, REFRESH_SECRET);
+        const newAccessToken = jwt.sign({ id: decoded.id, role: decoded.role }, JWT_SECRET, { expiresIn: "1h" });
+
+        res.json({ accessToken: newAccessToken });
+    } catch (err) {
+        return res.status(403).json({ error: "Invalid refresh token" });
+    }
+});
+
+// 🟢 Logout (Removes Refresh Token)
+app.post("/logout", (req, res) => {
+    const { token } = req.body;
+    refreshTokens = refreshTokens.filter(t => t !== token);
+    res.json({ message: "Logged out successfully" });
+});
+
+// 🟢 Get All Products
+app.get("/products", (req, res) => {
+    db.query("SELECT * FROM products", (err, results) => {
+        if (err) return res.status(500).json({ error: "Database error" });
         res.json(results);
     });
 });
 
-
-// Update Product (Admin/Seller)
-app.put('/products/:id', authenticate, (req, res) => {
+// 🟢 Admin: Add Product
+app.post("/products", authenticate, isAdmin, (req, res) => {
     const { name, price, category, stock } = req.body;
+
+    if (!name || !price || !category || !stock) {
+        return res.status(400).json({ error: "All fields are required" });
+    }
+
+    const sql = "INSERT INTO products (name, price, category, stock) VALUES (?, ?, ?, ?)";
+    db.query(sql, [name, price, category, stock], (err, result) => {
+        if (err) return res.status(400).json({ error: "Failed to add product" });
+        res.status(201).json({ message: "Product added successfully" });
+    });
+});
+
+// 🟢 Admin: Delete Product
+app.delete("/products/:id", authenticate, isAdmin, (req, res) => {
     const productId = req.params.id;
-    const sellerId = req.user.role === 'seller' ? req.user.id : null;
+    const sql = "DELETE FROM products WHERE id = ?";
 
-    const sql = 'UPDATE products SET name = ?, price = ?, category = ?, stock = ? WHERE id = ? AND (seller_id = ? OR ? IS NULL)';
-    db.query(sql, [name, price, category, stock, productId, sellerId, sellerId], (err, result) => {
-        if (err) return res.status(400).json({ error: 'Failed to update product' });
-        res.json({ message: 'Product updated successfully' });
+    db.query(sql, [productId], (err, result) => {
+        if (err) return res.status(500).json({ error: "Failed to delete product" });
+        if (result.affectedRows === 0) return res.status(404).json({ error: "Product not found" });
+
+        res.json({ message: "Product deleted successfully" });
     });
 });
-
-// Delete Product (Admin/Seller)
-app.delete('/products/:id', authenticate, (req, res) => {
-    const productId = req.params.id;
-    const sellerId = req.user.role === 'seller' ? req.user.id : null;
-
-    const sql = 'DELETE FROM products WHERE id = ? AND (seller_id = ? OR ? IS NULL)';
-    db.query(sql, [productId, sellerId, sellerId], (err, result) => {
-        if (err) return res.status(400).json({ error: 'Failed to delete product' });
-        res.json({ message: 'Product deleted successfully' });
-    });
+app.put("/products/:id", (req, res) => {
+    const id = parseInt(req.params.id);
+    const { name, price, category, stock } = req.body;
+    const productIndex = products.findIndex(p => p.id === id);
+    if (productIndex !== -1) {
+        products[productIndex] = { id, name, price, category, stock };
+        res.json({ message: "Product updated successfully!" });
+    } else {
+        res.status(404).json({ message: "Product not found!" });
+    }
 });
-
-// Get All Products (with search and filter)
-app.get('/products', (req, res) => {
-    const { category, minPrice, maxPrice } = req.query;
-    let sql = 'SELECT * FROM products WHERE 1=1';
-    const params = [];
-
-    if (category) {
-        sql += ' AND category = ?';
-        params.push(category);
-    }
-    if (minPrice) {
-        sql += ' AND price >= ?';
-        params.push(minPrice);
-    }
-    if (maxPrice) {
-        sql += ' AND price <= ?';
-        params.push(maxPrice);
-    }
-
-    db.query(sql, params, (err, results) => {
-        if (err) return res.status(500).json({ error: 'Database error' });
-        res.json(results);
-    });
-});
-
 // Start Server
 const PORT = 5000;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
-app.put('/products/:id', authenticate, (req, res) => {
-    const { name, price, category, stock } = req.body;
-    const productId = req.params.id;
-    const sellerId = req.user.role === 'seller' ? req.user.id : null;
-
-    const sql = 'UPDATE products SET name = ?, price = ?, category = ?, stock = ? WHERE id = ? AND (seller_id = ? OR ? IS NULL)';
-    db.query(sql, [name, price, category, stock, productId, sellerId, sellerId], (err, result) => {
-        if (err) return res.status(400).json({ error: 'Failed to update product' });
-        res.json({ message: 'Product updated successfully' });
-    });
-});
-app.delete('/products/:id', authenticate, (req, res) => {
-    const productId = req.params.id;
-    const sellerId = req.user.role === 'seller' ? req.user.id : null;
-
-    const sql = 'DELETE FROM products WHERE id = ? AND (seller_id = ? OR ? IS NULL)';
-    db.query(sql, [productId, sellerId, sellerId], (err, result) => {
-        if (err) return res.status(400).json({ error: 'Failed to delete product' });
-        res.json({ message: 'Product deleted successfully' });
-    });
-});
+app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
