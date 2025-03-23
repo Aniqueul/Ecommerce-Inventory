@@ -165,71 +165,202 @@ function fetchProducts() {
         })
         .catch(error => console.error("Error fetching products:", error));
 }
+document.addEventListener("DOMContentLoaded", () => {
+    fetchProducts();
+    document.getElementById("addProductButton").addEventListener("click", openAddProductModal);
+    document.getElementById("closeModalButton").addEventListener("click", closeAddProductModal);
+});
+
+async function fetchProducts() {
+    try {
+        const response = await fetch("http://localhost:5000/products");
+        const products = await response.json();
+        const productList = document.getElementById("productList");
+        productList.innerHTML = "";
+        products.forEach(product => {
+            const productCard = document.createElement("div");
+            productCard.classList.add("product-card");
+            productCard.innerHTML = `
+                <img src="${product.image || 'default-image.jpg'}" alt="${product.name}">
+                <h3>${product.name}</h3>
+                <p><strong>Price:</strong> $${product.price}</p>
+                <p><strong>Category:</strong> ${product.category}</p>
+                <p><strong>Stock:</strong> ${product.stock > 0 ? 'Available' : 'Out of Stock'}</p>
+                <div class="product-actions">
+                    <button class="edit-product">Edit</button>
+                    <button class="delete-product" onclick="deleteProduct(${product.id})">Delete</button>
+                </div>
+            `;
+            productList.appendChild(productCard);
+        });
+    } catch (error) {
+        console.error("Error fetching products:", error);
+    }
+}
 
 function openAddProductModal() {
-    document.getElementById("addProductModal").style.display = "flex";
+    document.getElementById("addProductModal").style.display = "block";
 }
 
 function closeAddProductModal() {
     document.getElementById("addProductModal").style.display = "none";
 }
 
+async function addProduct() {
+    const name = document.getElementById("productName").value;
+    const category = document.getElementById("productCategory").value;
+    const price = document.getElementById("productPrice").value;
+    const stock = document.getElementById("productStock").value;
+    const token = localStorage.getItem("token");
 
-function addProduct() {
-    const name = document.getElementById("productName").value.trim();
-    const price = document.getElementById("productPrice").value.trim();
-    const category = document.getElementById("productCategory").value.trim();
-    const stock = document.getElementById("productStock").value.trim();
-
-    // Check if fields are empty
-    if (!name || !price || !category || !stock) {
-        alert("Please fill all fields before adding a product.");
+    if (!name || !category || !price || !stock) {
+        alert("Please fill in all fields.");
+        return;
+    }
+    if (!token) {
+        alert("Unauthorized! Please log in.");
         return;
     }
 
-    // Create product object
-    const newProduct = {
-        name: name,
-        price: parseFloat(price),
-        category: category,
-        stock: parseInt(stock)
-    };
+    try {
+        const response = await fetch("http://localhost:5000/products", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ name, category, price, stock })
+        });
 
-    // Send request to backend
-    fetch("http://localhost:5000/products", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify(newProduct)
-    })
-    .then(response => response.json())
-    .then(data => {
-        alert("Product added successfully!");
-        closeAddProductModal(); // Close modal after adding
-        fetchProducts(); // Refresh product list
-    })
-    .catch(error => console.error("Error adding product:", error));
+        if (response.ok) {
+            alert("Product added successfully!");
+            closeAddProductModal();
+            fetchProducts();
+        } else {
+            const data = await response.json();
+            alert(`Error: ${data.error || 'Failed to add product'}`);
+        }
+    } catch (error) {
+        console.error("Error adding product:", error);
+    }
+}
+document.addEventListener("DOMContentLoaded", () => {
+    fetchProducts();
+    document.getElementById("addProductButton")?.addEventListener("click", openAddProductModal);
+    document.getElementById("closeAddModal")?.addEventListener("click", closeAddProductModal);
+    document.getElementById("closeEditModal")?.addEventListener("click", closeEditProductModal);
+});
+
+async function fetchProducts() {
+    const token = localStorage.getItem("token");
+    if (!token) {
+        alert("Unauthorized! Please log in.");
+        window.location.href = "index.html";
+        return;
+    }
+
+    try {
+        const response = await fetch("http://localhost:5000/products", {
+            method: "GET",
+            headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
+        });
+
+        if (!response.ok) throw new Error("Failed to fetch products");
+
+        const products = await response.json();
+        const productList = document.getElementById("productList");
+        productList.innerHTML = "";
+
+        products.forEach(product => {
+            const productCard = document.createElement("div");
+            productCard.classList.add("product-card");
+            productCard.innerHTML = `
+                <img src="${product.image || 'default-image.jpg'}" alt="${product.name}">
+                <h3>${product.name}</h3>
+                <p><strong>Price:</strong> $${product.price}</p>
+                <p><strong>Category:</strong> ${product.category}</p>
+                <p><strong>Stock:</strong> ${product.stock > 0 ? 'Available' : 'Out of Stock'}</p>
+                <div class="product-actions">
+                    <button class="edit-product" onclick="openEditProductModal(${product.id}, '${product.name}', '${product.category}', ${product.price}, ${product.stock})">Edit</button>
+                    <button class="delete-product" onclick="deleteProduct(${product.id})">Delete</button>
+                </div>
+            `;
+            productList.appendChild(productCard);
+        });
+    } catch (error) {
+        console.error("Error fetching products:", error);
+    }
 }
 
+// Open Add Product Modal
+function openAddProductModal() {
+    document.getElementById("addProductModal").style.display = "block";
+    document.querySelector(".modal-overlay").style.display = "block";
+}
 
-function updateProduct() {
-    let id = document.getElementById("editProductId").value;
-    let name = document.getElementById("editProductName").value;
-    let price = document.getElementById("editProductPrice").value;
-    let category = document.getElementById("editProductCategory").value;
-    let stock = document.getElementById("editProductStock").value;
+// Close Add Product Modal
+function closeAddProductModal() {
+    document.getElementById("addProductModal").style.display = "none";
+    document.querySelector(".modal-overlay").style.display = "none";
+}
 
-    fetch(`http://localhost:5000/products/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, price, category, stock })
-    })
-    .then(response => response.json())
-    .then(() => {
+// Open Edit Product Modal
+function openEditProductModal(id, name, category, price, stock) {
+    document.getElementById("editProductId").value = id;
+    document.getElementById("editProductName").value = name;
+    document.getElementById("editProductCategory").value = category;
+    document.getElementById("editProductPrice").value = price;
+    document.getElementById("editProductStock").value = stock;
+
+    document.getElementById("editProductModal").style.display = "block";
+    document.querySelector(".modal-overlay").style.display = "block";
+}
+
+// Close Edit Product Modal
+function closeEditProductModal() {
+    document.getElementById("editProductModal").style.display = "none";
+    document.querySelector(".modal-overlay").style.display = "none";
+}
+
+// Update Product in Database
+async function updateProduct() {
+    const token = localStorage.getItem("token");
+    if (!token) {
+        alert("Unauthorized! Please log in.");
+        return;
+    }
+
+    const id = document.getElementById("editProductId").value;
+    const name = document.getElementById("editProductName").value.trim();
+    const category = document.getElementById("editProductCategory").value.trim();
+    const price = parseFloat(document.getElementById("editProductPrice").value);
+    const stock = parseInt(document.getElementById("editProductStock").value, 10);
+
+    // Validation
+    if (!name || !category || isNaN(price) || isNaN(stock)) {
+        alert("Please fill in all fields correctly.");
+        return;
+    }
+
+    try {
+        const response = await fetch(`http://localhost:5000/products/${id}`, {
+            method: "PUT",
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ name, category, price, stock }) // Sending updated data
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) throw new Error(result.error || "Failed to update product");
+
+        alert("Product updated successfully!");
         closeEditProductModal();
-        fetchProducts();
-    })
-    .catch(error => console.error("Error updating product:", error));
+        fetchProducts(); // Refresh product list
+    } catch (error) {
+        console.error("Error updating product:", error);
+        alert("Error updating product. Check console for details.");
+    }
 }
-

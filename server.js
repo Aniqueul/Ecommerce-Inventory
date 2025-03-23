@@ -165,17 +165,37 @@ app.delete("/products/:id", authenticate, isAdmin, (req, res) => {
         res.json({ message: "Product deleted successfully" });
     });
 });
-app.put("/products/:id", (req, res) => {
-    const id = parseInt(req.params.id);
+
+// 🟢 Admin: Update Product
+app.put("/products/:id", authenticate, isAdmin, (req, res) => {
+    const productId = req.params.id;
     const { name, price, category, stock } = req.body;
-    const productIndex = products.findIndex(p => p.id === id);
-    if (productIndex !== -1) {
-        products[productIndex] = { id, name, price, category, stock };
-        res.json({ message: "Product updated successfully!" });
-    } else {
-        res.status(404).json({ message: "Product not found!" });
+
+    console.log("🔹 Request Body:", req.body); // Log the request body
+    console.log("🔹 Product ID:", productId); // Log the product ID
+
+    if (!name || !price || !category || !stock) {
+        console.error("❌ Missing fields in request body");
+        return res.status(400).json({ error: "All fields are required" });
     }
+
+    const sql = "UPDATE products SET name = ?, price = ?, category = ?, stock = ? WHERE id = ?";
+    db.query(sql, [name, price, category, stock, productId], (err, result) => {
+        if (err) {
+            console.error("❌ Database error:", err);
+            return res.status(500).json({ error: "Failed to update product" });
+        }
+        if (result.affectedRows === 0) {
+            console.error("❌ Product not found with ID:", productId);
+            return res.status(404).json({ error: "Product not found" });
+        }
+
+        console.log("✅ Product updated successfully");
+        res.json({ message: "Product updated successfully" });
+    });
 });
+
+
 // Start Server
 const PORT = 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
