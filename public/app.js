@@ -88,6 +88,10 @@ document.getElementById("registerForm")?.addEventListener("submit", async (e) =>
         document.getElementById("errorMessage").textContent = "An error occurred. Please try again.";
     }
 });
+function redirectToRegister(event) {
+    event.preventDefault(); // Prevent default button behavior
+    window.location.href = "register.html"; // Redirect to the register page
+}
 
 // 🔹 Login User
 document.addEventListener("DOMContentLoaded", function () {
