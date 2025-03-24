@@ -364,3 +364,65 @@ async function updateProduct() {
         alert("Error updating product. Check console for details.");
     }
 }
+// searchbar
+document.getElementById("searchButton").addEventListener("click", () => {
+    document.getElementById("searchProductModal").style.display = "flex";
+});
+
+function closeSearchModal() {
+    document.getElementById("searchProductModal").style.display = "none";
+}
+async function searchProduct() {
+    const searchInput = document.getElementById("searchInput");
+    const searchValue = searchInput.value.trim();
+
+    console.log("🔍 Searching for:", searchValue); // Debug log
+
+    if (!searchValue) {
+        alert("Please enter a product name.");
+        return;
+    }
+
+    try {
+        const response = await fetch(`http://localhost:5000/products?search=${encodeURIComponent(searchValue)}`);
+        const data = await response.json();
+
+        console.log("🔍 API Response:", data); // Log API response
+
+        if (Array.isArray(data) && data.length > 0) {
+            console.log("📌 Calling displayProducts with data:", data); // Debugging log
+            displayProducts(data); // Call display function
+        } else {
+            alert("No products found.");
+        }
+    } catch (error) {
+        console.error("❌ Fetch Error:", error);
+        alert("An error occurred while searching.");
+    }
+}
+
+function displayProducts(products) {
+    const container = document.getElementById("productContainer");
+
+    if (!container) {
+        console.error("❌ Error: Product container not found.");
+        return;
+    }
+
+    container.innerHTML = ""; // Clear previous products
+
+    products.forEach(product => {
+        const productCard = document.createElement("div");
+        productCard.classList.add("product-card");
+        productCard.innerHTML = `
+            <h3>${product.name}</h3>
+            <p>Price: $${product.price}</p>
+            <p>Category: ${product.category}</p>
+            <p>Stock: ${product.stock}</p>
+        `;
+        container.appendChild(productCard);
+    });
+}
+
+
+

@@ -194,6 +194,28 @@ app.put("/products/:id", authenticate, isAdmin, (req, res) => {
         res.json({ message: "Product updated successfully" });
     });
 });
+// 🟢 Search for a Product by Name
+app.get("/products", (req, res) => {
+    const searchQuery = req.query.search;
+
+    if (searchQuery) {
+        const sql = "SELECT * FROM products WHERE name LIKE ?";
+        db.query(sql, [`%${searchQuery}%`], (err, results) => {
+            if (err) {
+                console.error("❌ Database error:", err);
+                return res.status(500).json({ error: "Database error" });
+            }
+            res.json(results);
+        });
+    } else {
+        db.query("SELECT * FROM products", (err, results) => {
+            if (err) return res.status(500).json({ error: "Database error" });
+            res.json(results);
+        });
+    }
+});
+
+
 
 
 // Start Server
